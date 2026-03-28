@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.schemas.document_schema import DocumentExtractResponse
+from app.services.chunk_service import chunk_text
 from app.services.pdf_extractor import PDFExtractionError, extract_text_from_pdf
 from app.services.preprocess_service import clean_text
 
@@ -59,17 +60,19 @@ async def extract_document(file: UploadFile = File(...)):
             detail=f"파일 저장 중 오류가 발생했습니다: {e}"
         )
 
-    # 4. PDF 텍스트 추출 + 전처리
+    # 4. PDF 텍스트 추출 + 전처리 + chunking
     try:
         result = extract_text_from_pdf(str(file_path))
         cleaned_text = clean_text(result["full_text"])
+        chunks = chunk_text(cleaned_text, max_length=1500)
 
         return {
             "filename": file.filename,
             "page_count": result["page_count"],
             "pages": result["pages"],
             "full_text": result["full_text"],
-            "cleaned_text": cleaned_text
+            "cleaned_text": cleaned_text,
+            "chunks": chunks
         }
 
     except PDFExtractionError as e:
