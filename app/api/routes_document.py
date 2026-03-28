@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.schemas.document_schema import DocumentExtractResponse
 from app.services.pdf_extractor import PDFExtractionError, extract_text_from_pdf
+from app.services.preprocess_service import clean_text
 
 router = APIRouter()
 
@@ -41,6 +41,7 @@ async def extract_document(file: UploadFile = File(...)):
     # 3. 파일 저장
     try:
         contents = await file.read()
+
         if not contents:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -58,14 +59,17 @@ async def extract_document(file: UploadFile = File(...)):
             detail=f"파일 저장 중 오류가 발생했습니다: {e}"
         )
 
-    # 4. PDF 텍스트 추출
+    # 4. PDF 텍스트 추출 + 전처리
     try:
         result = extract_text_from_pdf(str(file_path))
+        cleaned_text = clean_text(result["full_text"])
+
         return {
             "filename": file.filename,
             "page_count": result["page_count"],
             "pages": result["pages"],
-            "full_text": result["full_text"]
+            "full_text": result["full_text"],
+            "cleaned_text": cleaned_text
         }
 
     except PDFExtractionError as e:
