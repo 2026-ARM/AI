@@ -100,6 +100,20 @@ class FlashcardRequest(BaseModel):
     )
 
 
+class FlashcardRequest(BaseModel):
+    """플래시카드 생성 요청"""
+    chunks: List[str] = Field(..., description="처리할 텍스트 청크")
+    card_types: List[CardType] = Field(
+        default=[CardType.CONCEPT],
+        description="생성할 카드 유형"
+    )
+    count_per_type: int = Field(default=5, ge=1, le=50, description="유형별 생성 개수")
+    difficulty: Optional[DifficultyLevel] = Field(
+        default=None,
+        description="난이도 (지정 시 고정, None이면 혼합)"
+    )
+
+
 class FlashcardBatchRequest(BaseModel):
     """배치 플래시카드 생성 요청"""
     chunks: List[str] = Field(..., description="처리할 텍스트 청크")
@@ -108,5 +122,8 @@ class FlashcardBatchRequest(BaseModel):
         default=[CardType.CONCEPT, CardType.DEFINITION, CardType.EXAMPLE],
         description="생성할 카드 유형"
     )
-    count: int = Field(default=30, ge=5, le=200, description="생성할 카드 수")
-    include_difficulty_mix: bool = Field(default=True, description="난이도 혼합 여부")
+    count_per_type: int = Field(default=5, ge=1, le=50, description="유형별 생성 개수")
+    difficulty: Optional[DifficultyLevel] = Field(
+        default=None,
+        description="난이도 (지정 시 고정, None이면 혼합)"
+    )
