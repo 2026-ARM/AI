@@ -170,6 +170,20 @@ def test_schema_validation():
         print(f"❌ 스키마 검증 실패: {e}")
 
 
+def test_summary_service_rejects_blank_chunks():
+    """빈 또는 공백 청크 입력이 있을 때 명확한 오류를 반환하는지 테스트합니다."""
+    from app.services.summary_service import SummaryService
+
+    service = SummaryService()
+    try:
+        service.summarize_chunks(["   ", "\n\t"])
+        print("❌ 요약 서비스가 빈 청크를 잘못 처리했습니다.")
+    except ValueError as e:
+        print(f"✅ 예상한 오류 발생: {e}")
+    except Exception as e:
+        print(f"❌ 잘못된 오류 유형: {e}")
+
+
 if __name__ == "__main__":
     import sys
     
