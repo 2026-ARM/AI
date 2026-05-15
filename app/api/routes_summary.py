@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -48,7 +50,7 @@ async def summarize_document(request: SummaryRequest, document_id: str = None):
         # 메타데이터 생성
         metadata = Metadata(
             processing_time=processing_time,
-            model_name="gpt-4",
+            model_name=summary_service.model_name,
             language="ko",
             chunks_used=len(request.chunks)
         )
@@ -95,7 +97,7 @@ def extract_key_points(text: str, max_points: int = 5) -> list[str]:
     Returns:
         주요 포인트 목록
     """
-    # 마침표로 구분된 문장들을 포인트로 변환
-    sentences = [s.strip() for s in text.split("。") if s.strip()]
+    # 마침표와 물음표, 느낌표 등으로 문장을 분리하여 주요 포인트를 추출합니다.
+    sentences = [s.strip() for s in re.split(r"[\.\?!。]+", text) if s.strip()]
     sentences = sentences[:max_points]
-    return sentences if sentences else [text[:100]]
+    return sentences if sentences else [text.strip()[:100]]
