@@ -58,7 +58,7 @@ async def generate_flashcards(
         card_data_list = flashcard_service.generate_flashcards(
             chunks=request.chunks,
             card_types=request.card_types,
-            count=request.count,
+            count_per_type=request.count_per_type,
             difficulty=request.difficulty
         )
         
