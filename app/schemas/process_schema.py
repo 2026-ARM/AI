@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import re
-from typing import List, Optional
+from typing import Literal, List, Union
 
-from pydantic import BaseModel, Field, FieldValidationInfo, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class ProcessOptions(BaseModel):
-    generate: List[str] = Field(
+    generate: Literal["summary", "quiz", "flashcard"] = Field(
         ...,
-        description="요약(summary), 퀴즈(quiz), 플래시카드(flashcard) 중 하나 이상",
+        description="생성할 기능: summary, quiz, flashcard 중 하나",
     )
     quizTypes: List[str] = Field(
         default_factory=list,
@@ -29,14 +28,15 @@ class ProcessOptions(BaseModel):
     language: str = Field(default="ko", description="결과 언어")
 
     @field_validator("generate", mode="before")
-    def validate_generate_item(cls, value: list[str]) -> list[str]:
+    def validate_generate_item(cls, value: str | list[str]) -> str:
         allowed = {"summary", "quiz", "flashcard"}
-        if not isinstance(value, list):
-            raise ValueError("generate 필드는 문자열 목록이어야 합니다.")
+        if isinstance(value, list):
+            if len(value) != 1:
+                raise ValueError("generate 값은 한 번에 하나만 요청할 수 있습니다.")
+            value = value[0]
 
-        for item in value:
-            if item not in allowed:
-                raise ValueError("generate 값은 summary, quiz, flashcard 중 하나여야 합니다.")
+        if value not in allowed:
+            raise ValueError("generate 값은 summary, quiz, flashcard 중 하나여야 합니다.")
         return value
 
 
@@ -46,59 +46,68 @@ class ProcessRequest(BaseModel):
     options: ProcessOptions = Field(...)
 
 
+class SummarySection(BaseModel):
+    sectionId: int
+    title: str
+    pageRange: str
+    content: str
+
+
+class SummaryContent(BaseModel):
+    coreSummary: List[str]
+    sections: List[SummarySection]
+
+
+class SummaryAIResponse(BaseModel):
+    documentId: int
+    type: Literal["summary"]
+    generatedLanguage: str
+    summary: SummaryContent
+
+    @field_validator("generatedLanguage", mode="before")
+    def normalize_language(cls, value: str) -> str:
+        return value.lower() if value else "ko"
+
+
 class QuizItem(BaseModel):
+    quizId: int
+    questionType: Literal["multiple_choice", "ox", "blank"]
     question: str
-    options: Optional[List[str]] = None
-    correct_answer: str
-    explanation: Optional[str] = None
+    options: List[str]
+    answer: int
+    explanation: str
+
+
+class QuizAIResponse(BaseModel):
+    documentId: int
+    type: Literal["quiz"]
+    difficulty: str
+    quizzes: List[QuizItem]
 
 
 class FlashcardItem(BaseModel):
+    cardId: int
     front: str
     back: str
-    type: Optional[str] = None
+    difficulty: Literal["easy", "normal", "hard"]
 
 
-class ProcessResponse(BaseModel):
-    document_id: int
-    file_url: HttpUrl
-    page_count: int
-    chunk_count: int
-    summary: Optional[str] = None
-    quizzes: Optional[List[QuizItem]] = None
-    flashcards: Optional[List[FlashcardItem]] = None
-    generated_language: str
-    difficulty: str
-    note: str = Field(default="AI 서버가 처리한 결과입니다.")
+class FlashcardAIResponse(BaseModel):
+    documentId: int
+    type: Literal["flashcard"]
+    flashcards: List[FlashcardItem]
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "document_id": 1,
-                "file_url": "https://res.cloudinary.com/.../lecture.pdf",
-                "page_count": 12,
-                "chunk_count": 8,
-                "summary": "...",
-                "quizzes": [
-                    {
-                        "question": "다음 중 ...?",
-                        "options": ["A", "B", "C", "D"],
-                        "correct_answer": "A",
-                        "explanation": "정답 해설"
-                    }
-                ],
-                "flashcards": [
-                    {
-                        "front": "개념 설명",
-                        "back": "정의 내용",
-                        "type": "concept"
-                    }
-                ],
-                "generated_language": "ko",
-                "difficulty": "medium",
-            }
-        }
 
-    @field_validator("generated_language", mode="before")
-    def normalize_language(cls, value: str) -> str:
-        return value.lower() if value else "ko"
+class ChatReference(BaseModel):
+    page: int
+    text: str
+
+
+class ChatAIResponse(BaseModel):
+    documentId: int
+    type: Literal["chat"]
+    answer: str
+    references: List[ChatReference]
+
+
+ProcessResponse = Union[SummaryAIResponse, QuizAIResponse, FlashcardAIResponse]
