@@ -2,78 +2,114 @@
 
 from __future__ import annotations
 
+import re
 from typing import Dict, List
 
 
 class ChunkService:
-    def __init__(self, max_length: int = 1500, overlap: int = 200) -> None:
+    def __init__(self, max_length: int = 1500, overlap: int = 1) -> None:
         if max_length <= 0:
             raise ValueError("max_length must be positive")
         if overlap < 0:
             raise ValueError("overlap cannot be negative")
+
         self.max_length = max_length
-        self.overlap = min(overlap, max_length)
-        # Split priority: paragraph -> line -> sentence -> word -> char
-        self.separators = ["\n\n", "\n", ". ", " ", ""]
+        self.overlap = overlap
+        self._use_paragraphs = True
 
     def chunk_text(self, text: str) -> List[Dict]:
         """
-        재귀적으로 텍스트를 분할하고 overlap을 적용해 청크를 생성합니다.
+        텍스트를 문단/줄 단위로 분할하고 overlap 단위로 청크를 생성합니다.
         """
         if not text:
             return []
 
-        raw_chunks = self._recursive_split(text, self.separators)
-        final_chunks: List[Dict] = []
-        current_text = ""
+        units = self._split_text_into_units(text)
+        chunks: List[str] = []
+        current_units: List[str] = []
 
-        for part in raw_chunks:
-            if not part:
+        for unit in units:
+            candidate = self._join_units(current_units + [unit])
+            if len(candidate) <= self.max_length:
+                current_units.append(unit)
                 continue
-            if len(current_text) + len(part) <= self.max_length:
-                current_text += part
-                continue
 
-            if current_text:
-                final_chunks.append(self._format_chunk(len(final_chunks) + 1, current_text))
+            if current_units:
+                chunks.append(self._join_units(current_units))
 
-            overlap_start = current_text[-self.overlap:] if current_text else ""
-            current_text = overlap_start + part
-
-            while len(current_text) > self.max_length:
-                emit_text = current_text[: self.max_length]
-                final_chunks.append(self._format_chunk(len(final_chunks) + 1, emit_text))
-                overlap_start = emit_text[-self.overlap:] if self.overlap else ""
-                current_text = overlap_start + current_text[self.max_length :]
-
-        if current_text:
-            final_chunks.append(self._format_chunk(len(final_chunks) + 1, current_text))
-
-        return final_chunks
-
-    def _recursive_split(self, text: str, separators: List[str]) -> List[str]:
-        if len(text) <= self.max_length or not separators:
-            return [text]
-
-        sep = separators[0]
-        next_separators = separators[1:]
-
-        if sep == "":
-            return [text[i : i + self.max_length] for i in range(0, len(text), self.max_length)]
-
-        parts = text.split(sep)
-        results: List[str] = []
-
-        for i, part in enumerate(parts):
-            content = part + (sep if i < len(parts) - 1 else "")
-            if not content:
-                continue
-            if len(content) <= self.max_length:
-                results.append(content)
+            if len(unit) > self.max_length:
+                chunks.extend(self._split_long_unit(unit))
+                current_units = []
             else:
-                results.extend(self._recursive_split(content, next_separators))
+                overlap_units = current_units[-self.overlap :] if self.overlap else []
+                current_units = overlap_units + [unit]
 
-        return results
+        if current_units:
+            chunks.append(self._join_units(current_units))
+
+        chunks = self._merge_short_chunks(chunks)
+        return [self._format_chunk(i + 1, chunk) for i, chunk in enumerate(chunks)]
+
+    def _merge_short_chunks(self, chunks: List[str], min_length: int = 200) -> List[str]:
+        merged: List[str] = []
+
+        for chunk in chunks:
+            if merged and len(chunk) < min_length:
+                if len(merged[-1]) + len(chunk) + 2 <= self.max_length:
+                    merged[-1] = f"{merged[-1]}\n\n{chunk}"
+                    continue
+            merged.append(chunk)
+
+        return merged
+
+    def _split_text_into_units(self, text: str) -> List[str]:
+        paragraphs = [paragraph.strip() for paragraph in re.split(r"\n\s*\n", text) if paragraph.strip()]
+        if len(paragraphs) > 1:
+            self._use_paragraphs = True
+            return paragraphs
+
+        self._use_paragraphs = False
+        return [line.strip() for line in text.splitlines() if line.strip()]
+
+    def _join_units(self, units: List[str]) -> str:
+        return "\n\n".join(units) if self._use_paragraphs else "\n".join(units)
+
+    def _split_long_unit(self, unit: str) -> List[str]:
+        if self._use_paragraphs:
+            lines = [line.strip() for line in unit.splitlines() if line.strip()]
+            if len(lines) > 1:
+                return self._split_long_text_by_lines(lines)
+
+        if "\n" in unit:
+            lines = [line.strip() for line in unit.splitlines() if line.strip()]
+            return self._split_long_text_by_lines(lines)
+
+        return [unit[i : i + self.max_length].strip() for i in range(0, len(unit), self.max_length)]
+
+    def _split_long_text_by_lines(self, lines: List[str]) -> List[str]:
+        chunks: List[str] = []
+        current = ""
+
+        for line in lines:
+            part = line + "\n"
+            if len(current) + len(part) <= self.max_length:
+                current += part
+                continue
+
+            if current.strip():
+                chunks.append(current.strip())
+
+            if len(part) > self.max_length:
+                for i in range(0, len(part), self.max_length):
+                    chunks.append(part[i : i + self.max_length].strip())
+                current = ""
+            else:
+                current = part
+
+        if current.strip():
+            chunks.append(current.strip())
+
+        return chunks
 
     def _format_chunk(self, index: int, text: str) -> Dict:
         normalized = text.strip()
@@ -84,5 +120,5 @@ class ChunkService:
         }
 
 
-def chunk_text(text: str, max_length: int = 1500, overlap: int = 200) -> List[Dict]:
+def chunk_text(text: str, max_length: int = 1500, overlap: int = 1) -> List[Dict]:
     return ChunkService(max_length=max_length, overlap=overlap).chunk_text(text)
