@@ -16,28 +16,12 @@ def process_document(request: ProcessRequest) -> ProcessResponse:
     chunks = chunk_text(cleaned_text, max_length=1500, overlap=200)
 
     llm = LLMService()
+    generate = request.options.generate
 
-    summary = None
-    quizzes = None
-    flashcards = None
+    if generate == "summary":
+        return llm.create_summary(chunks, request.options.model_dump(), request.documentId)
 
-    if "summary" in request.options.generate:
-        summary = llm.create_summary(chunks, request.options.model_dump())
+    if generate == "quiz":
+        return llm.create_quiz(chunks, request.options.model_dump(), request.documentId)
 
-    if "quiz" in request.options.generate:
-        quizzes = llm.create_quiz(chunks, request.options.model_dump())
-
-    if "flashcard" in request.options.generate:
-        flashcards = llm.create_flashcards(chunks, request.options.model_dump())
-
-    return ProcessResponse(
-        document_id=request.documentId,
-        file_url=request.fileUrl,
-        page_count=extraction["page_count"],
-        chunk_count=len(chunks),
-        summary=summary,
-        quizzes=quizzes,
-        flashcards=flashcards,
-        generated_language=request.options.language,
-        difficulty=request.options.difficulty,
-    )
+    return llm.create_flashcards(chunks, request.options.model_dump(), request.documentId)
